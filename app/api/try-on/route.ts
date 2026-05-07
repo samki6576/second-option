@@ -36,6 +36,51 @@ function joinUrl(baseUrl: string, pathOrUrl: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/${pathOrUrl.replace(/^\/+/, '')}`
 }
 
+function colorToHex(color: string): string {
+  const map: Record<string, string> = {
+    red: '#dc2626',
+    berry: '#9333ea',
+    nude: '#d4a574',
+    medium: '#f4a460',
+    coral: '#ff6b6b',
+    smokey: '#4f46e5',
+    gold: '#f59e0b',
+    silver: '#9ca3af',
+    black: '#1f2937',
+  }
+  return map[color.toLowerCase()] ?? '#9ca3af'
+}
+
+function resolveEffectsFromProduct(product: {
+  productId: string
+  productName: string
+  productType: string
+  productColor: string
+}) {
+  const configured = process.env.PERFECT_CORP_EFFECTS_MAP_JSON
+  if (configured) {
+    try {
+      const parsed = JSON.parse(configured) as Record<string, unknown>
+      const mapped = parsed[product.productId] ?? parsed[product.productType]
+      if (Array.isArray(mapped)) return mapped
+    } catch (error) {
+      console.warn('Invalid PERFECT_CORP_EFFECTS_MAP_JSON:', error)
+    }
+  }
+
+  // Fallback generic effect payload. Override via PERFECT_CORP_EFFECTS_MAP_JSON for exact spec.
+  return [
+    {
+      type: product.productType,
+      color: colorToHex(product.productColor),
+      color_name: product.productColor,
+      product_id: product.productId,
+      product_name: product.productName,
+      intensity: 0.85,
+    },
+  ]
+}
+
 async function initAndUploadFile(
   apiKey: string,
   fileEndpointUrl: string,
@@ -80,7 +125,7 @@ async function initAndUploadFile(
       'Content-Type': parsed.mime,
       'Content-Length': String(parsed.buffer.length),
     },
-    body: parsed.buffer,
+    body: parsed.buffer as unknown as BodyInit,
     cache: 'no-store',
   })
 
@@ -106,12 +151,11 @@ export async function POST(request: NextRequest) {
 
     const baseUrl = process.env.PERFECT_CORP_API_URL ?? 'https://yce-api-01.makeupar.com'
     const apiKey = process.env.PERFECT_CORP_API_KEY ?? process.env.VITE_PERFECT_CORP_API_KEY
-    const fileEndpoint = process.env.PERFECT_CORP_FILE_ENDPOINT ?? '/s2s/v2.0/file/mu-transfer'
-    const taskEndpoint = process.env.PERFECT_CORP_TASK_ENDPOINT ?? '/s2s/v2.0/task/mu-transfer'
+    const fileEndpoint = process.env.PERFECT_CORP_FILE_ENDPOINT ?? '/s2s/v2.0/file/makeup-vto'
+    const taskEndpoint = process.env.PERFECT_CORP_TASK_ENDPOINT ?? '/s2s/v2.0/task/makeup-vto'
     const pollTemplate =
       process.env.PERFECT_CORP_TASK_STATUS_ENDPOINT_TEMPLATE ??
-      '/s2s/v2.0/task/mu-transfer/{task_id}'
-    const fallbackReference = process.env.PERFECT_CORP_REFERENCE_IMAGE_DATA_URL
+      '/s2s/v2.0/task/makeup-vto/{task_id}'
 
     if (!apiKey) {
       return NextResponse.json(
@@ -120,26 +164,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!fallbackReference) {
-      return NextResponse.json(
-        {
-          error:
-            'Real API needs a reference makeup image. Set PERFECT_CORP_REFERENCE_IMAGE_DATA_URL (base64 data URL).',
-        },
-        { status: 500 }
-      )
-    }
-
     const fileUrl = joinUrl(baseUrl, fileEndpoint)
     const taskUrl = joinUrl(baseUrl, taskEndpoint)
 
     const srcFileId = await initAndUploadFile(apiKey, fileUrl, image, `src_${Date.now()}.png`)
-    const refFileId = await initAndUploadFile(
-      apiKey,
-      fileUrl,
-      fallbackReference,
-      `ref_${Date.now()}.png`
-    )
+    const effects = resolveEffectsFromProduct({
+      productId,
+      productName,
+      productType,
+      productColor,
+    })
 
     const createTaskResponse = await fetch(taskUrl, {
       method: 'POST',
@@ -149,8 +183,8 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         src_file_id: srcFileId,
-        ref_file_id: refFileId,
-        format: 'json',
+        effects,
+        version: '1.0',
       }),
       cache: 'no-store',
     })
