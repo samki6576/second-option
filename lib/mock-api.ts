@@ -1,5 +1,3 @@
-import { Jimp } from 'jimp'
-
 /**
  * Mock API Utilities for Virtual Try-On Application
  * These utilities simulate Perfect Corp API integration for image processing
@@ -56,20 +54,10 @@ export async function processTryOn(request: TryOnRequest): Promise<TryOnResult> 
   // Simulate API delay
   await new Promise(resolve => setTimeout(resolve, 1500))
 
-  const image = await Jimp.read(parsedImage.buffer)
-  const overlay = await createMakeupOverlay(
-    image.bitmap.width,
-    image.bitmap.height,
-    request.productType,
-    request.productColor
-  )
-
-  image.composite(overlay, 0, 0)
-  const processedImage = await image.getBase64Async(Jimp.MIME_JPEG)
-
   return {
     originalImage: request.image,
-    processedImage,
+    // Keep output contract stable without native image processing dependency.
+    processedImage: request.image,
     confidence: Math.random() * 0.3 + 0.7, // 70-100% confidence
     processingTime: 1.5,
     productApplied: {
@@ -87,83 +75,6 @@ function parseBase64Image(dataUrl: string): { mime: string; buffer: Buffer } | n
     mime: match[1],
     buffer: Buffer.from(match[2], 'base64'),
   }
-}
-
-function getMakeupColor(productColor: string) {
-  const colors: Record<string, { r: number; g: number; b: number }> = {
-    Red: { r: 220, g: 38, b: 38 },
-    Berry: { r: 147, g: 51, b: 234 },
-    Nude: { r: 212, g: 165, b: 116 },
-    Medium: { r: 244, g: 164, b: 96 },
-    Coral: { r: 255, g: 107, b: 107 },
-    Smokey: { r: 79, g: 70, b: 229 },
-    Gold: { r: 245, g: 158, b: 11 },
-    Silver: { r: 156, g: 163, b: 175 },
-    Black: { r: 31, g: 41, b: 55 },
-  }
-  return colors[productColor] ?? { r: 156, g: 163, b: 175 }
-}
-
-async function createMakeupOverlay(
-  width: number,
-  height: number,
-  productType: TryOnRequest['productType'],
-  productColor: string
-) {
-  const overlay = new Jimp(width, height, Jimp.rgbaToInt(0, 0, 0, 0))
-  const color = getMakeupColor(productColor)
-
-  if (productType === 'lipstick') {
-    const bandHeight = Math.max(Math.round(height * 0.15), 40)
-    const lipOverlay = new Jimp(
-      width,
-      bandHeight,
-      Jimp.rgbaToInt(color.r, color.g, color.b, 140)
-    )
-    overlay.composite(lipOverlay, 0, height - bandHeight - 16)
-  } else if (productType === 'foundation') {
-    const foundationOverlay = new Jimp(
-      width,
-      height,
-      Jimp.rgbaToInt(color.r, color.g, color.b, 60)
-    )
-    overlay.composite(foundationOverlay, 0, 0)
-  } else if (productType === 'blush') {
-    const radius = Math.round(Math.min(width, height) * 0.12)
-    const blush = await createCircleOverlay(radius, color, 120)
-    overlay.composite(blush, Math.round(width * 0.22 - radius), Math.round(height * 0.55 - radius))
-    overlay.composite(blush, Math.round(width * 0.72 - radius), Math.round(height * 0.55 - radius))
-  } else if (productType === 'eyeshadow') {
-    const bandHeight = Math.max(Math.round(height * 0.18), 40)
-    const shadowOverlay = new Jimp(
-      width,
-      bandHeight,
-      Jimp.rgbaToInt(color.r, color.g, color.b, 120)
-    )
-    overlay.composite(shadowOverlay, 0, Math.round(height * 0.18))
-  }
-
-  return overlay
-}
-
-async function createCircleOverlay(
-  radius: number,
-  color: { r: number; g: number; b: number },
-  alpha: number
-) {
-  const size = radius * 2
-  const circle = new Jimp(size, size, Jimp.rgbaToInt(0, 0, 0, 0))
-  const colorInt = Jimp.rgbaToInt(color.r, color.g, color.b, alpha)
-
-  circle.scan(0, 0, size, size, (x: number, y: number, idx: number) => {
-    const dx = x - radius
-    const dy = y - radius
-    if (dx * dx + dy * dy <= radius * radius) {
-      circle.bitmap.data.writeUInt32BE(colorInt, idx)
-    }
-  })
-
-  return circle
 }
 
 /**

@@ -9,11 +9,8 @@ export function Navigation() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <Link href="/" className="flex items-center gap-2 group">
-            <div className="w-8 h-8 bg-gradient-to-br from-primary to-secondary rounded-lg flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-primary-foreground" />
-            </div>
-            <span className="font-bold text-foreground hidden sm:inline">TryOn AI</span>
-          </Link>
+
+            <img src="/a.png" className='arounded-full w-20 h-20 object-cover' alt="AI Powered" ></img>          </Link>
 
           <div className="flex items-center gap-4">
             <Link

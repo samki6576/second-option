@@ -14,7 +14,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Process the try-on
     const result = await processTryOn({
       image,
       productId,

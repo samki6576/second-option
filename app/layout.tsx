@@ -9,7 +9,7 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: 'Virtual Try-On - AI Powered',
   description: 'Experience the future of beauty with AI-powered virtual try-on and social voting',
-  generator: 'v0.app',
+
   icons: {
     icon: [
       {

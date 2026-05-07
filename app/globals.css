@@ -4,7 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(0.97 0.006 270);
+  --background: oklch(90.551% 0.01351 262.451);
   --foreground: oklch(0.15 0.02 280);
   --card: oklch(0.99 0.003 260);
   --card-foreground: oklch(0.12 0.02 270);
@@ -35,7 +35,7 @@
   --sidebar-primary-foreground: oklch(0.98 0.01 270);
   --sidebar-accent: oklch(0.58 0.22 200);
   --sidebar-accent-foreground: oklch(0.98 0.01 270);
-  --sidebar-border: oklch(0.88 0.01 270);
+  --sidebar-border: oklch(14.027% 0.00224 286.01);
   --sidebar-ring: oklch(0.55 0.24 280);
 }
 
@@ -119,6 +119,7 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
