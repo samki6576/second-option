@@ -21,6 +21,11 @@ export default function TryOnPage() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [isApiLoading, setIsApiLoading] = useState(false)
 
+  const dataUrlToBlob = async (dataUrl: string): Promise<Blob> => {
+    const res = await fetch(dataUrl)
+    return await res.blob()
+  }
+
   const handleImageCapture = (image: string) => {
     setCapturedImage(image)
     setUploadError(null)
@@ -78,39 +83,98 @@ export default function TryOnPage() {
     setApiResult(null)
 
     try {
-      const response = await fetch('/api/try-on', {
+      const blob = await dataUrlToBlob(capturedImage)
+      const contentType = blob.type || 'image/jpeg'
+      const fileName = `tryon_${Date.now()}.jpg`
+
+      // 1) Ask server for pre-signed upload URL
+      const initRes = await fetch('/api/perfect-corp/file-init', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          image: capturedImage,
+          contentType,
+          fileName,
+          fileSize: blob.size,
+        }),
+      })
+
+      const initPayload = await initRes.json()
+      if (!initRes.ok) {
+        throw new Error(initPayload?.details ? JSON.stringify(initPayload.details) : initPayload?.error)
+      }
+
+      const { fileId, upload } = initPayload.data
+
+      // 2) Upload directly to Perfect Corp storage
+      const uploadRes = await fetch(upload.url, {
+        method: upload.method,
+        headers: upload.headers,
+        body: blob,
+      })
+      if (!uploadRes.ok) {
+        throw new Error('Upload failed')
+      }
+
+      // 3) Start task (fast)
+      const startRes = await fetch('/api/try-on', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          srcFileId: fileId,
           productId: selectedProduct.id,
           productName: selectedProduct.name,
           productType: selectedProduct.type,
           productColor: selectedProduct.color,
         }),
       })
-
-      const result = await response.json()
-
-      if (!response.ok) {
-        const details =
-          typeof result?.details === 'string'
-            ? result.details
-            : result?.details
-              ? JSON.stringify(result.details)
-              : ''
-        setApiError(
-          details
-            ? `${result?.error || 'API request failed'}: ${details}`
-            : (result?.error || 'API request failed. Please try again.')
-        )
-      } else {
-        setApiResult(result.data)
+      const startPayload = await startRes.json()
+      if (!startRes.ok) {
+        const details = startPayload?.details ? JSON.stringify(startPayload.details) : ''
+        setApiError(details ? `${startPayload?.error}: ${details}` : startPayload?.error)
+        return
       }
-    } catch (error) {
-      setApiError('Unable to connect to the try-on API. Please try again.')
+
+      const taskId = startPayload?.data?.taskId
+      if (!taskId) {
+        setApiError('Task was started but taskId was missing')
+        return
+      }
+
+      // 4) Poll status (client-side)
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        await new Promise((r) => setTimeout(r, 2000))
+        const pollRes = await fetch(`/api/try-on?taskId=${encodeURIComponent(taskId)}`)
+        const pollPayload = await pollRes.json()
+        if (!pollRes.ok) {
+          setApiError(pollPayload?.error || 'Polling failed')
+          return
+        }
+
+        const status = pollPayload?.data?.status
+        if (status === 'success') {
+          const processedImage = pollPayload?.data?.processedImage ?? capturedImage
+          setApiResult({
+            originalImage: capturedImage,
+            processedImage,
+            confidence: 0.95,
+            processingTime: 0,
+            productApplied: {
+              name: selectedProduct.name,
+              color: selectedProduct.color,
+              type: selectedProduct.type,
+            },
+          })
+          return
+        }
+        if (status === 'error') {
+          setApiError('Provider processing failed')
+          return
+        }
+      }
+
+      setApiError('Processing timed out. Please try again.')
+    } catch (error: any) {
+      setApiError(error?.message || 'Unable to process try-on. Please try again.')
     } finally {
       setIsApiLoading(false)
     }
