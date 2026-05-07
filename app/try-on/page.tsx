@@ -95,7 +95,17 @@ export default function TryOnPage() {
       const result = await response.json()
 
       if (!response.ok) {
-        setApiError(result?.error || 'API request failed. Please try again.')
+        const details =
+          typeof result?.details === 'string'
+            ? result.details
+            : result?.details
+              ? JSON.stringify(result.details)
+              : ''
+        setApiError(
+          details
+            ? `${result?.error || 'API request failed'}: ${details}`
+            : (result?.error || 'API request failed. Please try again.')
+        )
       } else {
         setApiResult(result.data)
       }

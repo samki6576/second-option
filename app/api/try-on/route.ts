@@ -36,21 +36,6 @@ function joinUrl(baseUrl: string, pathOrUrl: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/${pathOrUrl.replace(/^\/+/, '')}`
 }
 
-function colorToHex(color: string): string {
-  const map: Record<string, string> = {
-    red: '#dc2626',
-    berry: '#9333ea',
-    nude: '#d4a574',
-    medium: '#f4a460',
-    coral: '#ff6b6b',
-    smokey: '#4f46e5',
-    gold: '#f59e0b',
-    silver: '#9ca3af',
-    black: '#1f2937',
-  }
-  return map[color.toLowerCase()] ?? '#9ca3af'
-}
-
 function resolveEffectsFromProduct(product: {
   productId: string
   productName: string
@@ -68,17 +53,8 @@ function resolveEffectsFromProduct(product: {
     }
   }
 
-  // Fallback generic effect payload. Override via PERFECT_CORP_EFFECTS_MAP_JSON for exact spec.
-  return [
-    {
-      type: product.productType,
-      color: colorToHex(product.productColor),
-      color_name: product.productColor,
-      product_id: product.productId,
-      product_name: product.productName,
-      intensity: 0.85,
-    },
-  ]
+  // Safe fallback: no custom effects unless explicitly configured.
+  return []
 }
 
 async function initAndUploadFile(
