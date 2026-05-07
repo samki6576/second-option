@@ -174,6 +174,12 @@ export async function GET(request: NextRequest) {
     const payload = await pollResponse.json()
     const status = payload?.data?.task_status ?? payload?.task_status ?? payload?.status
     const processedImage = getResultImageUrl(payload)
+    const providerError =
+      payload?.error ??
+      payload?.data?.error ??
+      payload?.data?.results?.error ??
+      payload?.message ??
+      null
 
     return NextResponse.json({
       success: true,
@@ -181,6 +187,7 @@ export async function GET(request: NextRequest) {
         taskId,
         status,
         processedImage,
+        providerError,
         raw: payload,
       },
     })

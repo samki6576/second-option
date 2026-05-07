@@ -21,6 +21,16 @@ export default function TryOnPage() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [isApiLoading, setIsApiLoading] = useState(false)
 
+  const toErrorText = (value: unknown): string => {
+    if (!value) return ''
+    if (typeof value === 'string') return value
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return String(value)
+    }
+  }
+
   const dataUrlToBlob = async (dataUrl: string): Promise<Blob> => {
     const res = await fetch(dataUrl)
     return await res.blob()
@@ -167,7 +177,14 @@ export default function TryOnPage() {
           return
         }
         if (status === 'error') {
-          setApiError('Provider processing failed')
+          const providerError = toErrorText(
+            pollPayload?.data?.providerError ?? pollPayload?.data?.raw ?? pollPayload
+          )
+          setApiError(
+            providerError
+              ? `Provider processing failed: ${providerError}`
+              : 'Provider processing failed'
+          )
           return
         }
       }
