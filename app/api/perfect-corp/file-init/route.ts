@@ -1,21 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-type UploadRequest = {
-  method?: 'PUT' | 'POST'
-  url: string
-  headers?: Record<string, string>
-}
-
-type FileEntry = {
-  content_type?: string
-  file_name?: string
-  file_id?: string
-  requests?: UploadRequest[]
-}
-
 function joinUrl(baseUrl: string, pathOrUrl: string): string {
-  if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) return pathOrUrl
-  return `${baseUrl.replace(/\/+$/, '')}/${pathOrUrl.replace(/^\/+/, '')}`
+  if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) {
+    return pathOrUrl
+  }
+  const cleanBase = baseUrl.replace(/\/+$/, '')
+  const cleanPath = pathOrUrl.replace(/^\/+/, '')
+  return `${cleanBase}/${cleanPath}`
 }
 
 export async function POST(request: NextRequest) {
@@ -24,12 +15,30 @@ export async function POST(request: NextRequest) {
     const { contentType, fileName, fileSize } = body ?? {}
 
     if (!contentType || !fileName || !fileSize) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      )
     }
 
-    const baseUrl = process.env.PERFECT_CORP_API_URL ?? 'https://yce-api-01.makeupar.com'
-    const apiKey = process.env.PERFECT_CORP_API_KEY ?? process.env.VITE_PERFECT_CORP_API_KEY
-    const fileEndpoint = process.env.PERFECT_CORP_FILE_ENDPOINT ?? '/s2s/v2.0/file/makeup-vto'
+    if (fileSize > 10 * 1024 * 1024) {
+      return NextResponse.json(
+        { error: 'File size exceeds 10MB limit' },
+        { status: 400 }
+      )
+    }
+
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+    if (!allowedTypes.includes(contentType)) {
+      return NextResponse.json(
+        { error: 'Invalid file type. Only JPEG, PNG, and WEBP are allowed' },
+        { status: 400 }
+      )
+    }
+
+    const baseUrl = process.env.PERFECT_CORP_API_URL || 'https://yce-api-01.perfectcorp.com'
+    const apiKey = process.env.PERFECT_CORP_API_KEY
+    const fileEndpoint = process.env.PERFECT_CORP_FILE_ENDPOINT || '/s2s/v2.0/file/makeup-vto'
 
     if (!apiKey) {
       return NextResponse.json(
@@ -38,8 +47,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const fileUrl = joinUrl(baseUrl, fileEndpoint)
-    const initResponse = await fetch(fileUrl, {
+    const initUrl = joinUrl(baseUrl, fileEndpoint)
+    const initResponse = await fetch(initUrl, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -54,23 +63,41 @@ export async function POST(request: NextRequest) {
           },
         ],
       }),
-      cache: 'no-store',
     })
+
+    const responseText = await initResponse.text()
 
     if (!initResponse.ok) {
       return NextResponse.json(
-        { error: 'Perfect Corp file init failed', details: await initResponse.text() },
+        {
+          error: 'Perfect Corp file init failed',
+          status: initResponse.status,
+          details: responseText,
+        },
         { status: 502 }
       )
     }
 
-    const payload = await initResponse.json()
-    const fileEntry = payload?.data?.files?.[0] as FileEntry | undefined
-    const upload = fileEntry?.requests?.[0]
-
-    if (!fileEntry?.file_id || !upload?.url) {
+    let responseData
+    try {
+      responseData = JSON.parse(responseText)
+    } catch {
       return NextResponse.json(
-        { error: 'Perfect Corp file init response missing upload url or file_id', details: payload },
+        { error: 'Invalid JSON response', details: responseText },
+        { status: 502 }
+      )
+    }
+
+    const fileEntry = responseData?.data?.files?.[0]
+    const upload = fileEntry?.requests?.[0]
+    const fileId = fileEntry?.file_id
+
+    if (!fileId || !upload?.url) {
+      return NextResponse.json(
+        {
+          error: 'Missing file upload data in Perfect Corp response',
+          details: responseData,
+        },
         { status: 502 }
       )
     }
@@ -78,11 +105,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        fileId: fileEntry.file_id,
+        fileId,
         upload: {
-          method: upload.method ?? 'PUT',
+          method: upload.method || 'PUT',
           url: upload.url,
-          headers: upload.headers ?? {
+          headers: upload.headers || {
             'Content-Type': contentType,
             'Content-Length': String(fileSize),
           },
@@ -90,8 +117,10 @@ export async function POST(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error('Perfect Corp file-init error:', error)
-    return NextResponse.json({ error: 'Failed to init file upload' }, { status: 500 })
+    console.error('File init error:', error)
+    return NextResponse.json(
+      { error: 'Failed to init file upload', details: String(error) },
+      { status: 500 }
+    )
   }
 }
-

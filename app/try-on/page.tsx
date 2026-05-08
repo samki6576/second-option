@@ -20,6 +20,7 @@ export default function TryOnPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [isApiLoading, setIsApiLoading] = useState(false)
+  const MAX_IMAGE_LONG_SIDE = 1024
 
   const toErrorText = (value: unknown): string => {
     if (!value) return ''
@@ -34,6 +35,44 @@ export default function TryOnPage() {
   const dataUrlToBlob = async (dataUrl: string): Promise<Blob> => {
     const res = await fetch(dataUrl)
     return await res.blob()
+  }
+
+  const normalizeImageForApi = async (input: Blob): Promise<Blob> => {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const objectUrl = URL.createObjectURL(input)
+      const img = new Image()
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl)
+        resolve(img)
+      }
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl)
+        reject(new Error('Failed to decode image'))
+      }
+      img.src = objectUrl
+    })
+
+    const longSide = Math.max(image.width, image.height)
+    const scale = longSide > MAX_IMAGE_LONG_SIDE ? MAX_IMAGE_LONG_SIDE / longSide : 1
+    const width = Math.max(1, Math.round(image.width * scale))
+    const height = Math.max(1, Math.round(image.height * scale))
+
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      throw new Error('Failed to initialize canvas context')
+    }
+    ctx.drawImage(image, 0, 0, width, height)
+
+    const output = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, 'image/jpeg', 0.9)
+    })
+    if (!output) {
+      throw new Error('Failed to encode normalized image')
+    }
+    return output
   }
 
   const handleImageCapture = (image: string) => {
@@ -93,8 +132,9 @@ export default function TryOnPage() {
     setApiResult(null)
 
     try {
-      const blob = await dataUrlToBlob(capturedImage)
-      const contentType = blob.type || 'image/jpeg'
+      const originalBlob = await dataUrlToBlob(capturedImage)
+      const blob = await normalizeImageForApi(originalBlob)
+      const contentType = 'image/jpeg'
       const fileName = `tryon_${Date.now()}.jpg`
 
       // 1) Ask server for pre-signed upload URL
@@ -353,24 +393,28 @@ export default function TryOnPage() {
                           <img
                             src={tryOnPreviewImage ?? ''}
                             alt="Try-on preview"
-                            className="w-full h-full object-cover rounded-xl opacity-50"
+                            className={`w-full h-full object-cover rounded-xl ${
+                              apiResult ? 'opacity-100' : 'opacity-50'
+                            }`}
                           />
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <div
-                              className="w-24 h-24 rounded-full shadow-2xl animate-pulse"
-                              style={{
-                                backgroundColor: 
-                                  selectedProduct.color === 'Red' ? '#dc2626' :
-                                  selectedProduct.color === 'Berry' ? '#9333ea' :
-                                  selectedProduct.color === 'Nude' ? '#d4a574' :
-                                  selectedProduct.color === 'Gold' ? '#fbbf24' :
-                                  selectedProduct.color === 'Silver' ? '#9ca3af' :
-                                  selectedProduct.color === 'Black' ? '#1f2937' :
-                                  '#6b7280',
-                                boxShadow: '0 0 30px rgba(192,132,252,0.5)'
-                              }}
-                            />
-                          </div>
+                          {!apiResult && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <div
+                                className="w-24 h-24 rounded-full shadow-2xl animate-pulse"
+                                style={{
+                                  backgroundColor: 
+                                    selectedProduct.color === 'Red' ? '#dc2626' :
+                                    selectedProduct.color === 'Berry' ? '#9333ea' :
+                                    selectedProduct.color === 'Nude' ? '#d4a574' :
+                                    selectedProduct.color === 'Gold' ? '#fbbf24' :
+                                    selectedProduct.color === 'Silver' ? '#9ca3af' :
+                                    selectedProduct.color === 'Black' ? '#1f2937' :
+                                    '#6b7280',
+                                  boxShadow: '0 0 30px rgba(192,132,252,0.5)'
+                                }}
+                              />
+                            </div>
+                          )}
                         </div>
                         <p className="text-sm font-medium text-white mt-3">
                           {selectedProduct.name}
